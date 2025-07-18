@@ -1,0 +1,102 @@
+---
+title: "Graphs for Individual Likert Questions"
+author: "James Van Slyke"
+format: html
+editor: visual
+---
+
+```{r}
+#| echo: false
+#| include: false
+#Libraries
+library(tidyverse)
+library(readxl)
+
+#Import Dataset
+Survey <- read_excel("Data/FPU_Diversity_Project.xlsx")
+
+#Select a couple of questions
+Few_Questions <- Survey |> 
+  select(Q1:Q39)
+```
+
+## Bar Graphs for Each Likert Item
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 7
+#| fig-height: 5
+# Define Likert labels
+likert_labels <- c(
+  "not at all true",
+  "a little true",
+  "somewhat true",
+  "very true",
+  "completely true"
+)
+
+# Create long-format data for plotting
+df_long <- Few_Questions |>
+  mutate(row = row_number()) |>
+  pivot_longer(-row, names_to = "question_id", values_to = "response") |>
+  group_by(question_id) |>
+  mutate(
+    question_text = first(response),       # first row = question text
+    response = as.integer(response)        # convert others to numeric
+  ) |>
+  filter(row > 1) |>                       # exclude question text row
+  ungroup() |>
+  mutate(
+    response_label = factor(
+      response,
+      levels = 1:5,
+      labels = likert_labels,
+      ordered = TRUE
+    )
+  )
+
+# Summarize for percentages
+plot_data <- df_long |>
+  count(question_text, response_label, name = "n") |>
+  complete(             # <- this is the magic
+    question_text,
+    response_label = factor(
+      likert_labels, levels = likert_labels, ordered = TRUE
+    ),
+    fill = list(n = 0)
+  ) |>
+  group_by(question_text) |>
+  mutate(percent = n / sum(n)) |>
+  ungroup()
+
+
+```
+
+```{r}
+#| fig-height: 5
+#| fig-width: 7
+#| echo: false
+# Create a list of unique questions
+questions <- unique(plot_data$question_text)
+
+# Loop through each and explicitly print each plot
+for (q in questions) {
+  title_wrapped <- str_wrap(q, width = 60)  
+  # Try 40–70 depending on your fig.width
+  
+  p <- plot_data |>
+    filter(question_text == q) |>
+    ggplot(aes(x = response_label, y = percent, fill = response_label)) +
+    geom_col(show.legend = FALSE) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    labs(title = title_wrapped, x = "Response", y = "Percent of Responses") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 30, hjust = 1),
+      plot.title = element_text(size = 16, face = "bold")
+    )
+  
+  print(p)
+}
+```
